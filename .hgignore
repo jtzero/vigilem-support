@@ -1,0 +1,4 @@
+syntax: glob
+Gemfile.lock
+.yardoc
+pkg/vigilem-support-*.gem
