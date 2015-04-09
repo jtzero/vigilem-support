@@ -139,6 +139,12 @@ module Vigilem::FFI
       def ary_of_type(pointer)
         Utils.ary_of_type(ary_type, ary_type_size, pointer)
       end
+      
+      # @todo 
+      # @return [Array<#ary_type>]
+      #def ary_of_type!(pointer)
+      #  Utils.ary_of_type!(ary_type, ary_type_size, pointer)
+      #end
     end
     
     # @see    Array#replace

@@ -69,7 +69,7 @@ module Utils
     # @param  [Symbol] attr_name
     # @return 
     def type_of(attr_name)
-      field = self.class.layout.fields.find {|fld| fld.name == attr_name }
+      field = fields.find {|fld| fld.name == attr_name }
       raise "no field by the name #{attr_name} for #{self}" unless field
       field.type
     end
@@ -77,8 +77,8 @@ module Utils
     # 
     # @param  [Proc] block
     # @return 
-    def types(&block)
-      ::Vigilem::FFI::Utils.types(self, &block)
+    def fields(&block)
+      ::Vigilem::FFI::Utils.fields(self, &block)
     end
     
     # 

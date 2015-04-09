@@ -5,22 +5,10 @@ module FFI
     
     include Utils::Struct
     
-    # should make assign private, but since FFI::Struct.rb
-    # doesn;t know it's memory location
-    # this may have to be updated from the outside
-    attr_accessor :ptr_offset
-    
     # 
-    # @param [FFI::Pointer || Integer] ptr_or_offset
-    # @param [Integer] offset
-    def initialize(ptr_or_offset=nil, offset=0)
-      if ptr_or_offset.is_a? Integer
-        super()
-        @ptr_offset = ptr_or_offset
-      else
-        super(*ptr_or_offset)
-        @ptr_offset = offset
-      end
+    # @param [FFI::Pointer] pointer
+    def initialize(pointer=nil)
+      super(*pointer)
     end
     
     # allows initial values in a new object like Hash::[]
@@ -38,8 +26,14 @@ module FFI
     # @param  [FFI::Struct] struct
     # @return [String]
     def bytes
-      ptr = self.to_ptr
-      ptr.get_bytes(self.ptr_offset, self.size)
+      self.to_ptr.get_bytes(0, self.size)
+    end
+    
+    # 
+    # @see    Utils#clear?
+    # @return [TrueClass || FalseClass]
+    def clear?
+      Utils.clear?(self.to_ptr, 0, self.size)
     end
     
     # shows the members and thier values in addition to the traditional inspect

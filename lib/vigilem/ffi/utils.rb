@@ -1,14 +1,18 @@
+require 'vigilem/support/core_ext'
+
 module Vigilem
 module FFI
   # utilities for FFI
   module Utils
   
     # converts struct to a Hash
+    # @note   this will chow through unions and 
+    #         Hash all of thier members
     # @param  [#members, #values] struct
     # @param  [Integer || NilClass] limit
     # @return [Hash]
     def struct_to_h(struct, limit=nil)
-      Utils._struct_to_h(struct, limit)
+      Utils._struct_to_h(struct, 1, limit)
     end
     
     # gets the FFI::Type::Builtin a type
@@ -28,6 +32,16 @@ module FFI
     # @return [Integer]
     def ptr_capacity(pointer)
       pointer.size/pointer.type_size
+    end
+    
+    # 
+    # @param  [FFI::Pointer] pointer
+    # @param  [Integer] offset, defaults to `0'
+    # @param  [Integer] len, defaults to `nil'
+    # @return [TrueClass || FalseClass] whether or not the pointer content is #clear
+    def clear?(pointer, offset=0, len=nil)
+      byts = pointer.get_bytes(offset, (len || ptr_size = (pointer.size - offset)))
+      byts.eql?("\x00" * (len || ptr_size))
     end
     
     # 
@@ -120,79 +134,72 @@ module FFI
       replace_typedef(pointer, type, (value + self.read_typedef(pointer, type)))
     end
     
-    # @todo needed?
-    # @param  struct
+    # shorthand for #class.layout.fields, can handle as an object
+    # instead of just a struct.class
+    # @param  [#layout] struct_obj_or_class
     # @param  [Proc] block
-    # @return the type of the fields or the result of the block
-    def types(struct, &block)
-      struct = Support::Utils.get_class(struct) unless struct.respond_to? :layout
-      struct.layout.fields.map do |field|
-        if block
-          yield field
-        else
-          field.type
-        end
-      end
+    # @return [Array<FFI::StructLayout::Field>]
+    def fields(struct_obj_or_class)
+      struct_class = unless struct_obj_or_class.respond_to? :layout
+                 Support::Utils.get_class(struct_obj_or_class)
+              else
+                struct_obj_or_class
+              end
+      struct_class.layout.fields
     end
     
     # @todo   refactor me
-    # assigns values to the struct
-    # @param  [::FFI::Struct] struct
+    # assigns values to the struct_or_union
+    # @param  [::FFI::Struct] struct_or_union
     # @param  [Array || Hash] vals
-    # @return struct
-    def struct_bulk_assign(struct, vals)
+    # @return struct_or_union
+    def struct_bulk_assign(struct_or_union, vals)
       if vals.is_a? Hash
-        self.struct_bulk_assign_hash(struct, vals)
+        self.struct_bulk_assign_hash(struct_or_union, vals)
       else
-        types(struct) do |fld|
-          _struct_bulk_assign(struct, fld, fld.name, vals)
+        if struct_or_union.is_a? ::FFI::Union and (not vals.is_a? Hash)
+          raise ArgumentError, "`#{vals.inspect}' cannot be assigned to Union `#{struct_or_union.inspect}', a Hash is needed to decide which union attr to assign to"
+        end
+        fields(struct_or_union).map do |fld|
+          _struct_bulk_assign(struct_or_union, fld, fld.name, vals)
         end
       end
-      struct
+      struct_or_union
     end
     
     alias_method :from_array, :struct_bulk_assign
     
-    # 
-    # @param  [::FFI::Struct] struct
+    # @todo   refactor me
+    # @param  [::FFI::Struct] struct_or_union
     # @param  [Hash] hsh
-    # @return struct
-    def struct_bulk_assign_hash(struct, hsh)
+    # @return struct_or_union
+    def struct_bulk_assign_hash(struct_or_union, hsh)
       hsh.each do |key, value|
-        the_field = struct.layout.fields.find {|fld| fld.name == key }
-        raise "on #{struct.class} attr #{key} not found in #{struct.layout.fields.map(&:name)}" unless the_field
-        _struct_bulk_assign(struct, the_field, key, [hsh[key]])
+        attributes = fields(struct_or_union)
+        the_field = attributes.find {|fld| fld.name == key }
+        raise "on #{struct_or_union.class} attr #{key} not found in #{attributes.map(&:name)}" unless the_field
+        _struct_bulk_assign(struct_or_union, the_field, key, [hsh[key]])
       end
-      struct
+      struct_or_union
     end
     
     alias_method :from_hash, :struct_bulk_assign_hash
     
-    # @todo   unions don't need know the member name, the space taken up is the same
     # @todo   refactor me
     # @param  [::FFI::Struct] struct
     # @param  [::FFI::StructLayout::Field] field
     # @param  [Symbol] attr_name
     # @param  [Array || Hash] vals
     # @return 
-    def _struct_bulk_assign(struct, field, attr_name, vals)
-      # struct.type.struct_class, why use field?
-      #if is_a_struct?(struct.type)
-      if is_a_struct?(field)
-        if is_a_struct?(frst = vals.first) or frst.is_a? ::FFI::Union
-          struct[attr_name] = vals.shift
-        else
-          ptr_offset = struct.offsets.assoc(attr_name).last
-          struct_obj = if (struct_klass = field.type.struct_class) <= VFFIStruct
-                        struct_klass.new(ptr_offset)
-                      else
-                        struct_klass.new
-                      end
-          struct[attr_name] = struct_bulk_assign(struct_obj, vals.shift)
-        end
+    def _struct_bulk_assign(struct_or_union, field, attr_name, vals)
+      type = field.type
+      if is_a_struct?(field) and not (is_a_struct?(frst = vals.first) or frst.is_a? ::FFI::Union)
+        ptr_offset = struct_or_union.offsets.assoc(attr_name).last
+        struct_obj = type.struct_class.new(struct_or_union.to_ptr.slice(ptr_offset, type.size))
+        struct_or_union[attr_name] = struct_bulk_assign(struct_obj, vals.shift)
       else
-        raise ArgumentError, "Arity mismatch: complex type `#{struct.inspect}' does not match argument `#{vals.inspect}'" unless vals.respond_to? :shift
-        struct[attr_name] = vals.shift
+        raise ArgumentError, "Arity mismatch: `#{vals.inspect}' cannot be asigned to complex type `#{struct_or_union.inspect}'" unless vals.respond_to? :shift
+        struct_or_union[attr_name] = vals.shift
       end
     end
     
@@ -211,12 +218,16 @@ module FFI
     # @return [Array] of type
     def ary_of_type(type, type_size, pointer, len=-1)
       if type.is_a? Class and type <= ::FFI::Struct
-        # @todo slice is supposed to return new a pointer, when atype.type_size == pointer.type_size does this return the old pointer?
+        # slice returns a new pointer at that memory location, so both pointers point, to that location
         0.upto((pointer.size/type_size) - 1).map {|n| type.new(pointer.slice(n * type_size, type_size).dup) }
       else
         ::Vigilem::FFI::Utils.read_array_typedef(pointer, type, ptr_capacity(pointer))
       end
     end
+    
+    # @todo 
+    #def ary_of_type!
+    #end
     
     extend self
     
@@ -227,7 +238,13 @@ module FFI
     # @return [Hash || Struct]
     def _struct_to_h(struct, current=1, limit=nil)
       if limit.nil? or limit <= current
-        Hash[struct.members.zip(struct.values.map {|val| is_a_struct?(val) ? _struct_to_h(val) : val } )]
+        Hash[struct.members.zip(struct.values.map do |val| 
+          if is_a_struct?(val) or val.is_a?(::FFI::Union)
+            _struct_to_h(val, current + 1, limit)
+          else
+            val 
+          end
+        end)]
       else
         struct
       end

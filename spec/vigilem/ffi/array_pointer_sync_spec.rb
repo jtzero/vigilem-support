@@ -380,6 +380,16 @@ describe Vigilem::FFI::ArrayPointerSync do
       end
     end
     
+    describe '#ptr' do
+      context 'array_pointer_sync is empty' do
+        it 'returns the underlying pointer, null' do
+          ptr = host.ptr
+          host_bytes = ptr.get_bytes(0, ptr.size)
+          expect(host_bytes).to eql("\x00" * (host.max_size! * ::FFI.find_type(Host.ary_type).size))
+        end
+      end
+    end
+    
     context 'private' do
       
       describe '#ary' do
