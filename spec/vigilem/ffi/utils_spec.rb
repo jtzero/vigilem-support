@@ -356,8 +356,10 @@ describe ::Vigilem::FFI::Utils do
     
     context 'given a FFI::Struct' do
       
-      class FFIPoints < FFI::Struct
-        layout :x, :uint, :y, :uint
+      before :all do
+        class FFIPoints < FFI::Struct
+          layout :x, :uint, :y, :uint
+        end
       end
       
       let(:points_array) do

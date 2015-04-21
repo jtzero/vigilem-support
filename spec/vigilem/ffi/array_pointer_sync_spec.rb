@@ -17,6 +17,10 @@ describe Vigilem::FFI::ArrayPointerSync do
     end
   end
   
+  after :all do
+    Object.send(:remove_const, :InitLessHost) if Object.const_defined? :InitLessHost
+  end
+  
   let(:init_less_host) { InitLessHost.new }
   
   context '::included' do
@@ -26,6 +30,7 @@ describe Vigilem::FFI::ArrayPointerSync do
   end
   
   context 'without initialize_ary_ptr_sync' do
+    
     context 'point_cuts' do
       it 'will have only array manipulation methods' do
         expect(described_class.instance_variable_get(:@point_cuts)).to_not include([
@@ -47,6 +52,10 @@ describe Vigilem::FFI::ArrayPointerSync do
             include Vigilem::FFI::ArrayPointerSync
             self
           end
+        end
+        
+        after :all do
+          Object.send(:remove_const, :FailInitLessHost) if Object.const_defined? :FailInitLessHost
         end
         
         it 'raises NotImplementedError when not overriden' do
@@ -76,6 +85,11 @@ describe Vigilem::FFI::ArrayPointerSync do
                 Coord
               end
             end #Class.new
+          end
+          
+          after :all do
+            Object.send(:remove_const, :Coord) if Object.const_defined? :Coord
+            Object.send(:remove_const, :ClassArrayTypeInitLessHost) if Object.const_defined? :ClassArrayTypeInitLessHost
           end
           
           it 'returns the size of ary_type' do
@@ -111,6 +125,10 @@ describe Vigilem::FFI::ArrayPointerSync do
             layout :x, :uint, :y, :uint
           end
           
+          after :all do
+            Object.send(:remove_const, :FFIPoints) if Object.const_defined? :FFIPoints
+          end
+          
           let(:points_array) do
             3.times.map do 
               arg = FFIPoints.new
@@ -137,6 +155,10 @@ describe Vigilem::FFI::ArrayPointerSync do
             include Vigilem::FFI::ArrayPointerSync
           end
           
+          after :all do
+            Object.send(:remove_const, :FFIHost) if Object.const_defined? :FFIHost
+          end
+          
           it 'converts a FFI::Struct to an array_sync of ary_type' do
             result = FFIHost.ary_of_type(points_pointer).map.with_index do |ffi_pnt, idx|
               ffi_pnt.to_ptr.read_bytes(FFIHost.ary_type_size)
@@ -149,6 +171,10 @@ describe Vigilem::FFI::ArrayPointerSync do
         context 'given a VFFIStruct' do
           class VFFIPoints < VFFIStruct
             layout :x, :uint, :y, :uint
+          end
+          
+          after :all do
+            Object.send(:remove_const, :VFFIPoints) if Object.const_defined? :VFFIPoints
           end
           
           let(:points_array) do
@@ -175,20 +201,16 @@ describe Vigilem::FFI::ArrayPointerSync do
             end
           end
           
+          after :all do
+            Object.send(:remove_const, :VFFIHost) if Object.const_defined? :VFFIHost
+          end
+          
           it 'converts it to an array_sync of ary_type' do
             expect(vffi_host.ary_of_type(points_pointer).map(&:bytes)).to eql(points_array.map(&:bytes))
           end
           
         end
         
-      end
-      
-      describe '::raise_size_error' do
-        it 'raises NameError "size cannot exceed #{obj.max_size} for #{obj}" ' do
-          expect do
-            Host.raise_size_error
-          end.to raise_error(NameError)
-        end
       end
       
     end
@@ -285,7 +307,7 @@ describe Vigilem::FFI::ArrayPointerSync do
   end
   
   context 'after init' do
-  
+    
     before :all do
       Host = Class.new do
         def self.ary_type
@@ -296,6 +318,10 @@ describe Vigilem::FFI::ArrayPointerSync do
           initialize_ary_ptr_sync(max_len_or_ptr, *init_values)
         end
       end
+    end
+    
+    after :all do
+      Object.send(:remove_const, :Host) if Object.const_defined? :Host
     end
     
     let(:host) { Host.new(3) } 
@@ -312,6 +338,10 @@ describe Vigilem::FFI::ArrayPointerSync do
           end
         end
         ArrayInterceptInitLessHost.new.initialize_ary_ptr_sync(20)
+      end
+      
+      after :all do
+        Object.send(:remove_const, :ArrayInterceptInitLessHost) if Object.const_defined? :ArrayInterceptInitLessHost
       end
       
       it 'is executed after array methods' do
@@ -391,6 +421,38 @@ describe Vigilem::FFI::ArrayPointerSync do
     end
     
     context 'private' do
+      
+      describe '_raise_size_error' do
+        it 'raises Vigilem::Support::MaxSizeError "size cannot exceed #{obj.max_size} for #{obj}" ' do
+          expect do
+            host.send(:_raise_size_error)
+          end.to raise_error(Vigilem::Support::MaxSizeError)
+        end
+      end
+      
+      describe '#out_of_bounds?' do
+        it 'returns false when array.size <= max_size' do
+          host.send(:ary).concat([1])
+          expect(host.out_of_bounds?).to be_falsey
+        end
+        it 'returns true when array.size > max_size' do
+          host.send(:ary).concat([1, 2, 3, 4, 5])
+          expect(host.out_of_bounds?).to be_truthy
+        end
+      end
+      
+      describe 'out_of_bounds_check' do
+        it 'returns nil if not out of bounds' do
+          host.send(:ary).concat([1])
+          expect(host.out_of_bounds_check).to be_nil
+        end
+        it 'raises error when out of bounds' do
+          host.send(:ary).concat([1, 2, 3, 4, 5])
+          expect do
+            host.out_of_bounds_check
+          end.to raise_error(Vigilem::Support::MaxSizeError)
+        end
+      end
       
       describe '#ary' do
         it 'defaults to empty' do
@@ -586,30 +648,6 @@ describe Vigilem::FFI::ArrayPointerSync do
       end
     end
     
-    describe '#out_of_bounds?' do
-      it 'returns false when array.size <= max_size' do
-        host.send(:ary).concat([1])
-        expect(host.out_of_bounds?).to be_falsey
-      end
-      it 'returns true when array.size > max_size' do
-        host.send(:ary).concat([1, 2, 3, 4, 5])
-        expect(host.out_of_bounds?).to be_truthy
-      end
-    end
-    
-    describe 'out_of_bounds_check' do
-      it 'returns nil if not out of bounds' do
-        host.send(:ary).concat([1])
-        expect(host.out_of_bounds_check).to be_nil
-      end
-      it 'raises error when out of bounds' do
-        host.send(:ary).concat([1, 2, 3, 4, 5])
-        expect do
-          host.out_of_bounds_check
-        end.to raise_error(Vigilem::Support::MaxSizeError)
-      end
-    end
-    
     describe '#to_s' do
       it 'resembles an array' do
         host << 1
@@ -666,6 +704,11 @@ describe Vigilem::FFI::ArrayPointerSync do
               initialize_ary_ptr_sync(max_len_or_ptr, *init_values)
             end
           end
+        end
+        
+        after :all do
+          Object.send(:remove_const, :Pnt) if Object.const_defined? :Pnt
+          Object.send(:remove_const, :PointAry) if Object.const_defined? :PointAry
         end
         
         let(:points) do

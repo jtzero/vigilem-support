@@ -379,7 +379,7 @@ module Vigilem::FFI
     end
     
     # 
-    # @raise  [RuntimeError]
+    # @raise  [Vigilem::Support::MaxSizeError]
     # @return 
     def _raise_size_error
       raise Vigilem::Support::MaxSizeError, [_to_s, self.max_size!]

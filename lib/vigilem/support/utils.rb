@@ -173,19 +173,25 @@ module Support
     # @param  [#object_id]
     # @return [String] 
     def inspect_id(obj)
-      "0x#{(obj.object_id << 1).to_s(16)}"
+      @padding_size ||= Object.new.inspect.split(':0x').last.chomp('>').length
+      "0x%0#{@padding_size}x" % (obj.object_id << 1)
     end
     
     # @todo   test
     # @param  
     # @param  [Proc] block
-    # @return [Array], ['#<', instance variables split by '=', '>']
+    # @yields [' ', instance variable name, '=', instance variable value]
+    # @return [Array], [['#<', object class, ':', object "value space id"], instance variables prefixed by ' ' and split by '=', ['>']]
     def inspect_shell(obj, &block)
-      ['#<', *inspect_id(obj), obj.instance_variables.map do |k, v| 
-        ary = [k, '=', v]
+      [['#<', obj.class, ':', inspect_id(obj)], obj.instance_variables.map.with_index do |var_name, i| 
+        if i == 0
+          ary = [' ', var_name, '=', obj.instance_variable_get(var_name)] 
+        else
+          ary = [', ', var_name, '=', obj.instance_variable_get(var_name)]
+        end
         yield *ary if block_given?
-        ary 
-      end, '>']
+        ary
+      end, ['>']]
     end
   end
   

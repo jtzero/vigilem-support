@@ -195,20 +195,51 @@ describe Vigilem::Support::Utils do
   
   describe 'ObjectUtils' do
     describe '#_deep_dup' do
-      
+      it 'deep copies the object'
     end
     
     describe '#deep_dup' do
-      
+      it 'deep copies the object'
     end
     
     describe '#inspect_id' do
-      
+      it 'creates the value space id in the beginning of an inspect string from an object' do
+        temp = Object.new
+        expect(described_class::inspect_id(temp)).to eql(temp.inspect.split(':').last.chomp('>'))
+      end
     end
     
     describe '#inspect_shell' do
+      before :all do
+        class Tmp
+          def initialize
+            @one, @two, @three = 1, 2, 3
+          end
+        end
+      end
       
+      after :all do
+        Object.send(:remove_const, :Tmp) if Object.const_defined? :Tmp
+      end
+      
+      it 'will return a shell array with the string structure of an inspect' do
+        tmp = Tmp.new
+        expect(described_class::inspect_shell(tmp)).to eql([['#<', tmp.class, ':', described_class::inspect_id(tmp)], 
+                                            tmp.instance_variables.map.with_index do |n, i| 
+                                              if i == 0
+                                                [' ', n, '=', tmp.instance_variable_get(n)]
+                                              else
+                                                [', ', n, '=', tmp.instance_variable_get(n)]
+                                              end
+                                            end, ['>']])
+      end
+      
+      it %q<will return a shell array that when #join'd will be the same as #inspect string> do
+        tmp = Tmp.new
+        expect(described_class::inspect_shell(tmp).join).to eql(tmp.inspect)
+      end
     end
+    
   end
   
 end
